@@ -32,7 +32,7 @@ from pathlib import Path
 from config import settings
 from config.prompts import SYSTEM_PROMPT
 from src.conversation_manager import ConversationManager
-from src.exceptions import ConfigurationError, ConversationSaveError
+from src.exceptions import ConversationSaveError
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 EXIT_COMMANDS: set[str] = {"quit", "exit", "종료"}
 SAVE_COMMAND: str = "save"
 SUMMARY_COMMAND: str = "summary"
+CLEAR_COMMAND: str = "clear"
+SOURCES_COMMAND: str = "sources"
+STATUS_COMMAND: str = "status"
 
 # 대화 구분선
 SEPARATOR: str = "=" * 60
@@ -63,15 +66,26 @@ def print_welcome() -> None:
     Returns:
         None. 표준 출력으로 직접 메시지를 출력합니다.
     """
+    print()
     print(SEPARATOR)
-    print("AI 리서치 어시스턴트에 오신 것을 환영합니다!")
+    print("🔍 AI 리서치 어시스턴트 v2.0")
+    print("   웹 검색 기능이 추가되었습니다!")
     print(SEPARATOR)
-    print("궁금한 내용을 자유롭게 입력해주세요.\n")
-    print("사용 가능한 명령어")
-    print("  save     : 지금까지의 대화를 파일로 저장합니다.")
-    print("  summary  : 지금까지의 대화를 3문장으로 요약합니다.")
-    print("  quit / exit / 종료 : 프로그램을 종료합니다.")
+    print()
+    print("📌 사용 가능한 명령어:")
+    print("  • quit / exit / 종료  : 프로그램 종료")
+    print("  • save               : 대화 저장")
+    print("  • clear              : 대화 히스토리 초기화")
+    print("  • sources            : 마지막 검색 출처 보기")
+    print("  • status             : 현재 상태 확인")
+    print()
+    print("💡 검색 활용 팁:")
+    print("  • '~에 대해 조사해줘' → 웹 검색 실행")
+    print("  • '최신 ~ 알려줘' → 최신 정보 검색")
+    print("  • '~ 뉴스 찾아줘' → 관련 뉴스 검색")
+    print()
     print(SEPARATOR)
+    print()
 
 
 def save_conversation(manager: ConversationManager) -> Path:
@@ -93,10 +107,22 @@ def save_conversation(manager: ConversationManager) -> Path:
     timestamp: str = datetime.now().strftime(SAVE_TIMESTAMP_FORMAT)
     file_path: Path = DATA_DIR / f"conversation_{timestamp}.json"
 
+    # 메시지 리스트만 저장하던 1주차 형식에서, 메타데이터를 함께 담는
+    # 딕셔너리 형식으로 확장했다. load_conversation()은 두 형식을 모두 읽는다.
+    save_data: dict = {
+        "timestamp": datetime.now().isoformat(),
+        "messages": manager.get_messages(),
+        "turn_count": manager.get_turn_count(),
+        "state": manager.state,
+        # 검색 관련 정보
+        "search_enabled": manager.is_search_enabled(),
+        "search_count": manager.get_search_count(),
+    }
+
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         file_path.write_text(
-            json.dumps(manager.get_messages(), ensure_ascii=False, indent=2),
+            json.dumps(save_data, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     except OSError as error:
@@ -126,34 +152,109 @@ def _save_and_report(manager: ConversationManager) -> None:
         print(f"[저장 오류] {error}")
 
 
-def _confirm_and_save_on_exit(manager: ConversationManager) -> None:
+def handle_quit(manager: ConversationManager) -> bool:
     """종료 전 저장 여부를 사용자에게 확인하고, 원하면 저장합니다.
 
     Args:
         manager: 저장할 대화 히스토리를 가진 ConversationManager 인스턴스.
+
+    Returns:
+        bool: 항상 True (명령어를 처리했음을 의미).
     """
     save_choice = input("대화를 저장하시겠습니까? (y/n): ").strip().lower()
     if save_choice == CONFIRM_YES:
         _save_and_report(manager)
+    return True
+
+
+def handle_command(command: str, manager: ConversationManager) -> bool:
+    """입력을 명령어로 해석해 처리합니다.
+
+    Args:
+        command: 사용자가 입력한 문자열.
+        manager: 명령을 적용할 ConversationManager 인스턴스.
+
+    Returns:
+        bool: 명령어로 처리했으면 True, 명령어가 아니면 False.
+            False면 호출부가 이를 일반 대화 입력으로 처리한다.
+    """
+    command = command.lower().strip()
+
+    # 종료 명령어
+    if command in EXIT_COMMANDS:
+        return handle_quit(manager)
+
+    # 저장 명령어
+    if command == SAVE_COMMAND:
+        _save_and_report(manager)
+        return True
+
+    # 요약 명령어
+    if command == SUMMARY_COMMAND:
+        print(SEPARATOR)
+        print(manager.summarize_conversation())
+        print(SEPARATOR)
+        return True
+
+    # 초기화 명령어
+    if command == CLEAR_COMMAND:
+        manager.clear_history()
+        print("\n🧹 대화 히스토리를 초기화했습니다.\n")
+        return True
+
+    # 출처 보기 명령어
+    if command == SOURCES_COMMAND:
+        sources = manager.get_last_search_sources()
+        if sources:
+            print("\n📚 마지막 검색 출처:")
+            for index, source in enumerate(sources, 1):
+                print(f"  {index}. {source}")
+            print()
+        else:
+            print("\n검색 기록이 없습니다.\n")
+        return True
+
+    # 상태 확인 명령어
+    if command == STATUS_COMMAND:
+        print("\n📊 현재 상태:")
+        search_state = "활성화" if manager.is_search_enabled() else "비활성화"
+        print(f"  • 검색 기능: {search_state}")
+        print(f"  • 대화 횟수: {manager.get_turn_count()}회")
+        print(f"  • 검색 횟수: {manager.get_search_count()}회")
+        print()
+        return True
+
+    return False
 
 
 def main() -> None:
     """AI 리서치 어시스턴트의 콘솔 진입점.
 
     ConversationManager를 초기화한 뒤, 사용자 입력을 받아 일반 대화 및
-    save/summary/종료 명령어를 처리하는 반복 루프를 실행합니다.
+    handle_command()가 처리하는 명령어를 반복 실행합니다.
 
     Returns:
         None.
     """
     try:
-        manager = ConversationManager(system_message=SYSTEM_PROMPT)
-    except ConfigurationError as error:
-        # API 키가 없거나 잘못된 경우 등, 초기화 단계에서 발생하는 설정 오류.
-        # ConversationManager가 원인을 이미 사용자 친화적인 메시지로 감싸서
-        # 던지므로 여기서는 그대로 출력한다.
-        logger.error("ConversationManager 초기화 실패: %s", error)
-        print(f"[설정 오류] {error}")
+        manager = ConversationManager(
+            system_message=SYSTEM_PROMPT,
+            enable_search=True,
+        )
+
+        # 검색 기능 상태 출력
+        if manager.is_search_enabled():
+            print("✅ 검색 기능이 활성화되었습니다.\n")
+        else:
+            print("⚠️ 검색 기능이 비활성화되었습니다. (API 키 확인 필요)\n")
+
+    except Exception as error:
+        # API 키가 없거나 잘못된 경우 등, 초기화 단계에서 발생하는 오류.
+        # ConfigurationError는 원인을 이미 사용자 친화적인 메시지로 감싸서
+        # 던지므로 그대로 출력한다.
+        logger.error("초기화 실패: %s", error)
+        print(f"❌ 초기화 실패: {error}")
+        print("환경 설정을 확인해주세요. (.env 파일)")
         return
 
     logger.info("ConversationManager 초기화 성공")
@@ -171,28 +272,18 @@ def main() -> None:
             command: str = user_input.lower()
             logger.debug("사용자 입력 수신: %r (command=%r)", user_input, command)
 
-            # 종료 명령어 처리: 저장 여부를 확인한다 (저장 실패해도 종료는 계속 진행)
-            if command in EXIT_COMMANDS:
-                _confirm_and_save_on_exit(manager)
-                break
-
-            # 'save' 명령어: 즉시 현재 대화 저장
-            if command == SAVE_COMMAND:
-                _save_and_report(manager)
-                continue
-
-            # 'summary' 명령어: 지금까지의 대화 요약 출력
-            if command == SUMMARY_COMMAND:
-                print(SEPARATOR)
-                print(manager.summarize_conversation())
-                print(SEPARATOR)
+            # 명령어면 handle_command가 처리한다. 종료 명령은 처리 후
+            # 루프를 빠져나가야 하므로 여기서 별도로 판단한다.
+            if handle_command(command, manager):
+                if command in EXIT_COMMANDS:
+                    break
                 continue
 
             # 일반 대화 처리
+            # 검색이 실행되면 응답까지 시간이 걸리므로 진행 중임을 알린다.
+            print("\n🔄 처리 중...")
             reply: str = manager.chat(user_input)
-            print(SEPARATOR)
-            print(f"AI: {reply}")
-            print(SEPARATOR)
+            print(f"\nAI: {reply}\n")
 
     except KeyboardInterrupt:
         # Ctrl+C로 강제 종료한 경우
@@ -204,8 +295,13 @@ def main() -> None:
         print(f"\n예상치 못한 오류가 발생했습니다: {error}")
 
     else:
-        turn_count = manager.get_turn_count()
-        print(f"\n총 {turn_count}번 대화했습니다. 이용해주셔서 감사합니다.")
+        print()
+        print(SEPARATOR)
+        print("👋 대화를 종료합니다. 안녕히 가세요!")
+        print(f"   총 대화: {manager.get_turn_count()}회")
+        print(f"   총 검색: {manager.get_search_count()}회")
+        print(SEPARATOR)
+        print()
 
 
 if __name__ == "__main__":

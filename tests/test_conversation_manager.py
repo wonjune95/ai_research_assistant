@@ -37,24 +37,29 @@ def dummy_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _FakeMessage:
-    """OpenAI 응답의 message 객체를 흉내내는 더미 객체."""
+    """OpenAI 응답의 message 객체를 흉내내는 더미 객체.
 
-    def __init__(self, content: str) -> None:
+    실제 ChatCompletionMessage는 도구 호출이 없을 때도 tool_calls 속성을
+    None으로 가지고 있으므로, 더미도 동일하게 속성을 항상 노출한다.
+    """
+
+    def __init__(self, content: str, tool_calls: list | None = None) -> None:
         self.content = content
+        self.tool_calls = tool_calls
 
 
 class _FakeChoice:
     """OpenAI 응답의 choice 객체를 흉내내는 더미 객체."""
 
-    def __init__(self, content: str) -> None:
-        self.message = _FakeMessage(content)
+    def __init__(self, content: str, tool_calls: list | None = None) -> None:
+        self.message = _FakeMessage(content, tool_calls)
 
 
 class _FakeChatCompletion:
     """client.chat.completions.create()의 반환값을 흉내내는 더미 객체."""
 
-    def __init__(self, content: str) -> None:
-        self.choices = [_FakeChoice(content)]
+    def __init__(self, content: str, tool_calls: list | None = None) -> None:
+        self.choices = [_FakeChoice(content, tool_calls)]
 
 
 class TestConversationManagerInit:

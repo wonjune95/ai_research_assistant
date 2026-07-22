@@ -22,3 +22,49 @@ DATA_DIR: str = "data"
 
 # 대화 저장 파일명에 사용할 타임스탬프 포맷 (예: 20260715_213000)
 SAVE_FORMAT: str = "%Y%m%d_%H%M%S"
+
+# Tavily 검색 설정
+
+# Tavily 검색 API 기본 반환 결과 수
+TAVILY_DEFAULT_MAX_RESULTS: int = 5
+
+# Tavily 검색 깊이 — 일반 검색 시 사용 (basic: 빠르고 저렴, advanced: 깊은 검색)
+TAVILY_DEFAULT_SEARCH_DEPTH: str = "basic"
+
+# Tavily 검색 깊이 — 심화 검색 시 사용
+TAVILY_ADVANCED_SEARCH_DEPTH: str = "advanced"
+
+# 검색 쿼리 최적화: 사용자 발화에서 제거할 한국어 표현 (불필요한 조사·요청어)
+QUERY_REMOVE_PHRASES: list[str] = [
+    "알려줘",
+    "알려주세요",
+    "설명해줘",
+    "설명해주세요",
+    "찾아줘",
+    "찾아주세요",
+    "검색해줘",
+    "검색해주세요",
+    "에 대해",
+    "에 관해",
+    "에 대해서",
+    "좀",
+    "좀요",
+    "해줘",
+    "해주세요",
+    "알고 싶어",
+    "알고 싶어요",
+    "궁금해",
+    "궁금해요",
+]
+
+# 검색 쿼리 최적화: 연도로 변환할 시간 표현 (최신성 필터·쿼리 보강용)
+TIME_INDICATOR_PHRASES: list[str] = [
+    "최신",
+    "최근",
+    "요즘",
+    "현재",
+    "올해",
+    "금년",
+    "이번",
+    "지금",
+]
